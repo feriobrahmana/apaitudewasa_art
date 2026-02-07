@@ -68,13 +68,8 @@
     const rSlider = document.getElementById('rSlider');
     const gSlider = document.getElementById('gSlider');
     const bSlider = document.getElementById('bSlider');
-    const rVal = document.getElementById('rVal');
-    const gVal = document.getElementById('gVal');
-    const bVal = document.getElementById('bVal');
     const colorPreview = document.getElementById('colorPreview');
     const paintBtn = document.getElementById('paintBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const statusDiv = document.getElementById('status');
 
     // State
     let currentColor = { r: 100, g: 100, b: 200 };
@@ -90,10 +85,6 @@
         const b = parseInt(bSlider.value);
 
         currentColor = { r, g, b };
-
-        rVal.textContent = r;
-        gVal.textContent = g;
-        bVal.textContent = b;
 
         colorPreview.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
     }
@@ -122,8 +113,6 @@
             handlePaintSubmit();
         }
     });
-
-    clearBtn.addEventListener('click', handleClear);
 
     class Particle {
         constructor(text, color, x, y, vx, vy, fontSize) {
@@ -181,16 +170,17 @@
         if (text.length === 0) return;
 
         // Paint background layer (mixing effect)
-        paintCtx.fillStyle = `rgba(${currentColor.r}, ${currentColor.g}, ${currentColor.b}, 0.08)`;
+        // Reduced opacity for subtler mixing as per story-telling requirements
+        paintCtx.fillStyle = `rgba(${currentColor.r}, ${currentColor.g}, ${currentColor.b}, 0.04)`;
         paintCtx.fillRect(0, 0, width, height);
 
         // Spawn particle
-        const fontSize = 20;
+        const fontSize = 24; // Slightly larger for legibility
         // Start near center with some randomness
-        const x = width / 2 + (Math.random() - 0.5) * 100;
-        const y = height / 2 + (Math.random() - 0.5) * 100;
-        const vx = (Math.random() - 0.5) * 4;
-        const vy = (Math.random() - 0.5) * 4;
+        const x = width / 2 + (Math.random() - 0.5) * 200;
+        const y = height / 2 + (Math.random() - 0.5) * 200;
+        const vx = (Math.random() - 0.5) * 2; // Slower, gentler movement
+        const vy = (Math.random() - 0.5) * 2;
 
         const particle = new Particle(text, currentColor, x, y, vx, vy, fontSize);
         particles.push(particle);
@@ -200,17 +190,9 @@
             particles.shift(); // Remove oldest
         }
 
-        statusDiv.textContent = `Particles: ${particles.length}`;
-    }
-
-    function handleClear() {
-        // Reset paint canvas to white
-        paintCtx.fillStyle = '#ffffff';
-        paintCtx.fillRect(0, 0, width, height);
-
-        // Clear particles
-        particles = [];
-        statusDiv.textContent = `Particles: 0`;
+        // Reset input for next contribution
+        wordInput.value = '';
+        paintBtn.disabled = true;
     }
 
     // Animation Loop
