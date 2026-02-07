@@ -27,7 +27,8 @@
 
             <p class="prompt-small">What color is this feeling?</p>
             <div class="preview-container">
-                <div id="colorPreview"></div>
+                <!-- Canvases for live preview of shape + color -->
+                <canvas id="previewCanvas" width="240" height="60"></canvas>
             </div>
 
             <div class="sliders">
@@ -42,6 +43,14 @@
                 <div class="slider-row">
                     <label>B</label>
                     <input type="range" id="bSlider" min="0" max="255" value="200">
+                </div>
+            </div>
+
+            <p class="prompt-small">How complex is it?</p>
+            <div class="sliders">
+                <div class="slider-row">
+                    <label>C</label>
+                    <input type="range" id="cSlider" min="0" max="100" value="50">
                 </div>
             </div>
 

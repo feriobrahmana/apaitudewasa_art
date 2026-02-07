@@ -68,31 +68,115 @@
     const rSlider = document.getElementById('rSlider');
     const gSlider = document.getElementById('gSlider');
     const bSlider = document.getElementById('bSlider');
-    const colorPreview = document.getElementById('colorPreview');
+    const cSlider = document.getElementById('cSlider'); // Complexity
+    const previewCanvas = document.getElementById('previewCanvas');
+    const previewCtx = previewCanvas.getContext('2d');
     const paintBtn = document.getElementById('paintBtn');
 
     // State
     let currentColor = { r: 100, g: 100, b: 200 };
+    let currentComplexity = 0.5;
     let particles = [];
     const MAX_PARTICLES = 250;
 
-    // Initial color setup
-    updateColor();
+    // Initial setup
+    updateState();
 
-    function updateColor() {
+    function updateState() {
         const r = parseInt(rSlider.value);
         const g = parseInt(gSlider.value);
         const b = parseInt(bSlider.value);
+        const c = parseInt(cSlider.value) / 100; // 0.0 to 1.0
 
         currentColor = { r, g, b };
+        currentComplexity = c;
 
-        colorPreview.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+        drawPreview();
+    }
+
+    function drawPreview() {
+        // Clear preview
+        previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+        // Background
+        previewCtx.fillStyle = '#fff';
+        previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+        // Draw shape in center
+        const cx = previewCanvas.width / 2;
+        const cy = previewCanvas.height / 2;
+        const size = 20;
+
+        previewCtx.fillStyle = `rgb(${currentColor.r}, ${currentColor.g}, ${currentColor.b})`;
+        // Use the same shape drawing logic as Particle
+        drawProceduralShape(previewCtx, cx, cy, size, currentComplexity, 0);
+
+        // Also fill text preview if needed? No, shape is the focus.
+    }
+
+    // Procedural Shape Generator
+    // pinned to center (cx, cy)
+    function drawProceduralShape(ctx, cx, cy, size, complexity, angleOffset) {
+        ctx.beginPath();
+
+        // Map complexity to vertices (3 to 12)
+        // 0 -> 3 (Triangle)
+        // 0.5 -> 6 (Hexagon)
+        // 1.0 -> 12+ (Circle-ish)
+        const vertices = Math.floor(3 + complexity * 9);
+
+        // Map complexity to "indent" for snowflake effect
+        // If complexity is around 0.5 (snowflake), we want spikes.
+        // If 0 (triangle), no spikes (convex).
+        // If 1 (circle), no spikes.
+        // Let's make "spikiness" peak in the middle.
+        // 0 -> 1.0 (Convex)
+        // 0.5 -> 0.5 (Star)
+        // 1.0 -> 1.0 (Convex)
+
+        // Simple heuristic:
+        // Complexity 0: Radius is constant (Polygon)
+        // Complexity 0.5: Radius oscillates (Star)
+        // Complexity 1: Radius is constant (Polygon/Circle)
+
+        let spikeFactor = 1.0;
+        if (complexity > 0.2 && complexity < 0.8) {
+             // Peak spikiness at 0.5
+             // 0.2 -> 1.0
+             // 0.5 -> 0.4
+             // 0.8 -> 1.0
+             const distFromMid = Math.abs(complexity - 0.5); // 0 at mid, 0.3 at edges
+             spikeFactor = 0.4 + (distFromMid * 2); // 0.4 at mid, 1.0 at edges
+        }
+
+        const step = (Math.PI * 2) / vertices;
+
+        for (let i = 0; i < vertices * 2; i++) {
+            const theta = i * (step / 2) + angleOffset;
+
+            // Outer radius vs Inner radius (for stars)
+            let r = size;
+            if (i % 2 !== 0) {
+                // Inner vertex
+                r = size * spikeFactor;
+            }
+
+            const x = cx + Math.cos(theta) * r;
+            const y = cy + Math.sin(theta) * r;
+
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+
+        ctx.closePath();
+        ctx.fill();
     }
 
     // Event Listeners
-    rSlider.addEventListener('input', updateColor);
-    gSlider.addEventListener('input', updateColor);
-    bSlider.addEventListener('input', updateColor);
+    rSlider.addEventListener('input', updateState);
+    gSlider.addEventListener('input', updateState);
+    bSlider.addEventListener('input', updateState);
+    cSlider.addEventListener('input', updateState);
 
     uiToggle.addEventListener('click', () => {
         const isHidden = uiPanel.classList.toggle('hidden');
@@ -115,14 +199,17 @@
     });
 
     class Particle {
-        constructor(text, color, x, y, vx, vy, fontSize) {
+        constructor(text, color, complexity, x, y, vx, vy, fontSize) {
             this.text = text;
             this.color = { ...color }; // Copy color object
+            this.complexity = complexity;
             this.x = x;
             this.y = y;
             this.vx = vx;
             this.vy = vy;
             this.fontSize = fontSize;
+            this.angleOffset = Math.random() * Math.PI * 2;
+            this.rotationSpeed = (Math.random() - 0.5) * 0.02;
 
             // Measure dimensions
             textCtx.font = `${this.fontSize}px "Times New Roman"`;
@@ -133,10 +220,7 @@
         update() {
             this.x += this.vx;
             this.y += this.vy;
-
-            // Friction removed for constant movement
-            // this.vx *= 0.999;
-            // this.vy *= 0.999;
+            this.angleOffset += this.rotationSpeed;
 
             // Bounce X
             if (this.x < 0) {
@@ -158,10 +242,22 @@
         }
 
         draw() {
+            // Draw Text
             textCtx.font = `${this.fontSize}px "Times New Roman"`;
             textCtx.fillStyle = `rgb(${this.color.r}, ${this.color.g}, ${this.color.b})`;
             textCtx.textBaseline = 'top';
             textCtx.fillText(this.text, this.x, this.y);
+
+            // Draw Crystal Shape (pinned to top-right of text)
+            // Vertically centered relative to text line
+            const shapeX = this.x + this.width + 12;
+            const shapeY = this.y + (this.height / 2);
+
+            // Set style for shape (maybe slightly transparent?)
+            textCtx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0.8)`;
+
+            // Use the global function (or method if refactored)
+            drawProceduralShape(textCtx, shapeX, shapeY, 10, this.complexity, this.angleOffset);
         }
     }
 
@@ -186,7 +282,8 @@
         const vx = Math.cos(angle) * speed;
         const vy = Math.sin(angle) * speed;
 
-        const particle = new Particle(text, currentColor, x, y, vx, vy, fontSize);
+        // Ensure angleOffset is handled if not passed, but here we pass complexity
+        const particle = new Particle(text, currentColor, currentComplexity, x, y, vx, vy, fontSize);
         particles.push(particle);
 
         // Limit max particles
