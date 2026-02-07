@@ -79,6 +79,13 @@
     let particles = [];
     const MAX_PARTICLES = 250;
 
+    // Central Shape State
+    let centralShape = {
+        sides: 2, // Start with a Line (as requested)
+        color: { r: 200, g: 200, b: 200 }, // Start neutral
+        rotation: 0
+    };
+
     // Initial setup
     updateState();
 
@@ -108,68 +115,54 @@
         const size = 20;
 
         previewCtx.fillStyle = `rgb(${currentColor.r}, ${currentColor.g}, ${currentColor.b})`;
-        // Use the same shape drawing logic as Particle
+        // Draw the current "User" shape based on sliders
         drawProceduralShape(previewCtx, cx, cy, size, currentComplexity, 0);
-
-        // Also fill text preview if needed? No, shape is the focus.
     }
 
     // Procedural Shape Generator
-    // pinned to center (cx, cy)
-    function drawProceduralShape(ctx, cx, cy, size, complexity, angleOffset) {
+    // Used for both preview and central shape
+    // complexity: 0 to 1 (maps to sides 2 to ~30)
+    // OR directly pass 'sides' if we pre-calculate
+    function drawProceduralShape(ctx, cx, cy, size, complexityOrSides, angleOffset) {
         ctx.beginPath();
 
-        // Map complexity to vertices (3 to 12)
-        // 0 -> 3 (Triangle)
-        // 0.5 -> 6 (Hexagon)
-        // 1.0 -> 12+ (Circle-ish)
-        const vertices = Math.floor(3 + complexity * 9);
-
-        // Map complexity to "indent" for snowflake effect
-        // If complexity is around 0.5 (snowflake), we want spikes.
-        // If 0 (triangle), no spikes (convex).
-        // If 1 (circle), no spikes.
-        // Let's make "spikiness" peak in the middle.
-        // 0 -> 1.0 (Convex)
-        // 0.5 -> 0.5 (Star)
-        // 1.0 -> 1.0 (Convex)
-
-        // Simple heuristic:
-        // Complexity 0: Radius is constant (Polygon)
-        // Complexity 0.5: Radius oscillates (Star)
-        // Complexity 1: Radius is constant (Polygon/Circle)
-
-        let spikeFactor = 1.0;
-        if (complexity > 0.2 && complexity < 0.8) {
-             // Peak spikiness at 0.5
-             // 0.2 -> 1.0
-             // 0.5 -> 0.4
-             // 0.8 -> 1.0
-             const distFromMid = Math.abs(complexity - 0.5); // 0 at mid, 0.3 at edges
-             spikeFactor = 0.4 + (distFromMid * 2); // 0.4 at mid, 1.0 at edges
+        let vertices;
+        if (complexityOrSides <= 1.0) {
+            // Map complexity (0-1) to sides (2 to 30)
+            // 0 -> 2 (Line)
+            // 1 -> 30 (Circle)
+            vertices = 2 + complexityOrSides * 28;
+        } else {
+            // Direct side count
+            vertices = complexityOrSides;
         }
 
-        const step = (Math.PI * 2) / vertices;
+        // For drawing, we floor it unless we want to animate between integers (tricky)
+        // Let's use floor for sides, but maybe interpolate radius?
+        // Actually, let's keep it simple: strict polygons.
+        const sides = Math.max(2, Math.floor(vertices));
+        const step = (Math.PI * 2) / sides;
 
-        for (let i = 0; i < vertices * 2; i++) {
-            const theta = i * (step / 2) + angleOffset;
+        // Line case (2 sides) needs special handling to look good?
+        // A "2-sided polygon" is just a flat line back and forth.
 
-            // Outer radius vs Inner radius (for stars)
-            let r = size;
-            if (i % 2 !== 0) {
-                // Inner vertex
-                r = size * spikeFactor;
-            }
-
-            const x = cx + Math.cos(theta) * r;
-            const y = cy + Math.sin(theta) * r;
+        for (let i = 0; i < sides; i++) {
+            const theta = i * step + angleOffset;
+            const x = cx + Math.cos(theta) * size;
+            const y = cy + Math.sin(theta) * size;
 
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         }
 
         ctx.closePath();
-        ctx.fill();
+
+        // Stroke or Fill?
+        // Let's stroke it for "blueprint" look, maybe fill slightly
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // ctx.fill(); // Optional
     }
 
     // Event Listeners
@@ -179,8 +172,18 @@
     cSlider.addEventListener('input', updateState);
 
     uiToggle.addEventListener('click', () => {
-        const isHidden = uiPanel.classList.toggle('hidden');
-        uiToggleIcon.textContent = isHidden ? 'Contribute' : 'Close';
+        // Toggle the class
+        uiPanel.classList.toggle('hidden');
+
+        // Check actual state after toggle
+        const isHidden = uiPanel.classList.contains('hidden');
+
+        // Update text
+        if (isHidden) {
+            uiToggleIcon.textContent = 'Contribute';
+        } else {
+            uiToggleIcon.textContent = 'Close';
+        }
     });
 
     wordInput.addEventListener('input', () => {
@@ -199,17 +202,14 @@
     });
 
     class Particle {
-        constructor(text, color, complexity, x, y, vx, vy, fontSize) {
+        constructor(text, color, x, y, vx, vy, fontSize) {
             this.text = text;
             this.color = { ...color }; // Copy color object
-            this.complexity = complexity;
             this.x = x;
             this.y = y;
             this.vx = vx;
             this.vy = vy;
             this.fontSize = fontSize;
-            this.angleOffset = Math.random() * Math.PI * 2;
-            this.rotationSpeed = (Math.random() - 0.5) * 0.02;
 
             // Measure dimensions
             textCtx.font = `${this.fontSize}px "Times New Roman"`;
@@ -220,7 +220,6 @@
         update() {
             this.x += this.vx;
             this.y += this.vy;
-            this.angleOffset += this.rotationSpeed;
 
             // Bounce X
             if (this.x < 0) {
@@ -247,17 +246,6 @@
             textCtx.fillStyle = `rgb(${this.color.r}, ${this.color.g}, ${this.color.b})`;
             textCtx.textBaseline = 'top';
             textCtx.fillText(this.text, this.x, this.y);
-
-            // Draw Crystal Shape (pinned to top-right of text)
-            // Vertically centered relative to text line
-            const shapeX = this.x + this.width + 12;
-            const shapeY = this.y + (this.height / 2);
-
-            // Set style for shape (maybe slightly transparent?)
-            textCtx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0.8)`;
-
-            // Use the global function (or method if refactored)
-            drawProceduralShape(textCtx, shapeX, shapeY, 10, this.complexity, this.angleOffset);
         }
     }
 
@@ -282,14 +270,28 @@
         const vx = Math.cos(angle) * speed;
         const vy = Math.sin(angle) * speed;
 
-        // Ensure angleOffset is handled if not passed, but here we pass complexity
-        const particle = new Particle(text, currentColor, currentComplexity, x, y, vx, vy, fontSize);
+        const particle = new Particle(text, currentColor, x, y, vx, vy, fontSize);
         particles.push(particle);
 
         // Limit max particles
         if (particles.length > MAX_PARTICLES) {
             particles.shift(); // Remove oldest
         }
+
+        // --- Central Shape Evolution ---
+        // Calculate user sides (2 to 30)
+        const userSides = 2 + currentComplexity * 28;
+
+        // Average with current sides (weighted or simple average)
+        // Simple average gives significant impact
+        centralShape.sides = (centralShape.sides + userSides) / 2;
+
+        // Average Color
+        centralShape.color.r = (centralShape.color.r + currentColor.r) / 2;
+        centralShape.color.g = (centralShape.color.g + currentColor.g) / 2;
+        centralShape.color.b = (centralShape.color.b + currentColor.b) / 2;
+
+        console.log(`Evolved Shape: sides=${centralShape.sides.toFixed(2)}`);
 
         // Reset input for next contribution
         wordInput.value = '';
@@ -298,8 +300,24 @@
 
     // Animation Loop
     function animate() {
-        // Clear text canvas only
+        // Clear text canvas only (and redraw central shape which is animated)
         textCtx.clearRect(0, 0, width, height);
+
+        // Draw Central Shape
+        // We draw it on textCtx so it can animate (rotate) smoothly without smearing
+        const cx = width / 2;
+        const cy = height / 2;
+        const size = Math.min(width, height) * 0.25; // Large size
+
+        centralShape.rotation += 0.005; // Slow rotation
+
+        // Set style
+        // Use a glowing effect? No, just clean lines
+        textCtx.fillStyle = `rgba(${Math.round(centralShape.color.r)}, ${Math.round(centralShape.color.g)}, ${Math.round(centralShape.color.b)}, 0.1)`;
+        textCtx.strokeStyle = `rgba(${Math.round(centralShape.color.r)}, ${Math.round(centralShape.color.g)}, ${Math.round(centralShape.color.b)}, 0.8)`;
+        textCtx.lineWidth = 3;
+
+        drawProceduralShape(textCtx, cx, cy, size, centralShape.sides, centralShape.rotation);
 
         // Update and draw particles
         for (let i = 0; i < particles.length; i++) {
