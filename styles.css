@@ -1,0 +1,161 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #fff;
+    font-family: 'Times New Roman', Times, serif; /* Adult, classic font */
+}
+
+#canvas-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+}
+
+#paintCanvas {
+    z-index: 1; /* Bottom layer: Accumulated paint */
+    background-color: white; /* Start white */
+}
+
+#textCanvas {
+    z-index: 2; /* Top layer: Moving particles */
+    pointer-events: none; /* Let clicks pass through to UI if needed, or paint canvas */
+}
+
+/* UI Styles */
+#ui-container {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#ui-toggle {
+    background: #fff;
+    border: 1px solid #000;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 16px;
+    margin-bottom: 10px;
+    transition: background 0.2s;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.1);
+}
+
+#ui-toggle:hover {
+    background: #f0f0f0;
+}
+
+#ui-panel {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #000;
+    padding: 20px;
+    width: 250px;
+    max-width: 85vw; /* Mobile friendly */
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.1);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    transform-origin: top left;
+}
+
+#ui-panel.hidden {
+    display: none;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    font-family: inherit;
+    font-size: 16px;
+    box-sizing: border-box;
+    margin-bottom: 15px;
+}
+
+.sliders {
+    margin-bottom: 15px;
+}
+
+.slider-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.slider-row label {
+    width: 20px;
+}
+
+.slider-row input[type="range"] {
+    flex-grow: 1;
+    margin: 0 10px;
+}
+
+.slider-row span {
+    width: 30px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+#colorPreview {
+    width: 100%;
+    height: 40px;
+    border: 1px solid #000;
+    margin-bottom: 15px;
+}
+
+.actions button {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #000;
+    color: #fff;
+    border: none;
+    font-family: inherit;
+    font-size: 16px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.actions button:hover:not(:disabled) {
+    opacity: 0.8;
+}
+
+#clearBtn {
+    background: transparent;
+    color: #000;
+    border: 1px solid #000;
+}
+
+#clearBtn:hover {
+    background: #f0f0f0;
+}
+
+#status {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #666;
+    text-align: right;
+    border-top: 1px solid #eee;
+    padding-top: 5px;
+}

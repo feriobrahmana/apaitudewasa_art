@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Living Canvas</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="paintCanvas"></canvas>
+        <canvas id="textCanvas"></canvas>
+    </div>
+
+    <div id="ui-container">
+        <button id="ui-toggle" aria-label="Toggle Controls">
+            <span class="icon">Controls</span>
+        </button>
+
+        <div id="ui-panel" class="hidden">
+            <div class="input-group">
+                <input type="text" id="wordInput" placeholder="Enter a word" maxlength="40">
+            </div>
+
+            <div class="sliders">
+                <div class="slider-row">
+                    <label>R</label>
+                    <input type="range" id="rSlider" min="0" max="255" value="100">
+                    <span id="rVal">100</span>
+                </div>
+                <div class="slider-row">
+                    <label>G</label>
+                    <input type="range" id="gSlider" min="0" max="255" value="100">
+                    <span id="gVal">100</span>
+                </div>
+                <div class="slider-row">
+                    <label>B</label>
+                    <input type="range" id="bSlider" min="0" max="255" value="200">
+                    <span id="bVal">200</span>
+                </div>
+            </div>
+
+            <div class="preview-container">
+                <div id="colorPreview"></div>
+            </div>
+
+            <div class="actions">
+                <button id="paintBtn" disabled>Paint + Submit</button>
+                <button id="clearBtn">Clear Canvas</button>
+            </div>
+
+            <div id="status">Particles: 0</div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
