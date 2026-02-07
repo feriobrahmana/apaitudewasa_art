@@ -96,7 +96,7 @@
 
     uiToggle.addEventListener('click', () => {
         const isHidden = uiPanel.classList.toggle('hidden');
-        uiToggleIcon.textContent = isHidden ? 'Controls' : 'Close';
+        uiToggleIcon.textContent = isHidden ? 'Contribute' : 'Close';
     });
 
     wordInput.addEventListener('input', () => {
@@ -134,9 +134,9 @@
             this.x += this.vx;
             this.y += this.vy;
 
-            // Friction
-            this.vx *= 0.999;
-            this.vy *= 0.999;
+            // Friction removed for constant movement
+            // this.vx *= 0.999;
+            // this.vy *= 0.999;
 
             // Bounce X
             if (this.x < 0) {
@@ -179,8 +179,12 @@
         // Start near center with some randomness
         const x = width / 2 + (Math.random() - 0.5) * 200;
         const y = height / 2 + (Math.random() - 0.5) * 200;
-        const vx = (Math.random() - 0.5) * 2; // Slower, gentler movement
-        const vy = (Math.random() - 0.5) * 2;
+
+        // Gentle, constant drift (ensure it's not zero)
+        const speed = 0.5; // Pixels per frame
+        const angle = Math.random() * Math.PI * 2;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
 
         const particle = new Particle(text, currentColor, x, y, vx, vy, fontSize);
         particles.push(particle);
