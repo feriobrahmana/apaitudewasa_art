@@ -109,14 +109,33 @@
         previewCtx.fillStyle = '#fff';
         previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
-        // Draw shape in center
-        const cx = previewCanvas.width / 2;
+        // 1. Color Swatch (Left 1/3)
+        previewCtx.fillStyle = `rgb(${currentColor.r}, ${currentColor.g}, ${currentColor.b})`;
+        previewCtx.fillRect(0, 0, previewCanvas.width * 0.3, previewCanvas.height);
+
+        // 2. Shape Preview (Right 2/3)
+        const cx = previewCanvas.width * 0.65;
         const cy = previewCanvas.height / 2;
         const size = 20;
 
-        previewCtx.fillStyle = `rgb(${currentColor.r}, ${currentColor.g}, ${currentColor.b})`;
+        // Use darker stroke for visibility
+        const darkColor = darkenColor(currentColor, 40);
+        previewCtx.strokeStyle = `rgb(${darkColor.r}, ${darkColor.g}, ${darkColor.b})`;
+        previewCtx.fillStyle = `rgba(${currentColor.r}, ${currentColor.g}, ${currentColor.b}, 0.2)`;
+        previewCtx.lineWidth = 2;
+
         // Draw the current "User" shape based on sliders
         drawProceduralShape(previewCtx, cx, cy, size, currentComplexity, 0);
+        previewCtx.fill(); // Fill slightly
+    }
+
+    // Helper to darken color
+    function darkenColor(color, amount) {
+        return {
+            r: Math.max(0, color.r - amount),
+            g: Math.max(0, color.g - amount),
+            b: Math.max(0, color.b - amount)
+        };
     }
 
     // Procedural Shape Generator
@@ -311,12 +330,13 @@
 
         centralShape.rotation += 0.005; // Slow rotation
 
+        // Calculate darker stroke color for contrast
+        const darkStroke = darkenColor(centralShape.color, 50); // Darker by 50 units
+
         // Set style
-        // Use a glowing effect? No, just clean lines
         textCtx.fillStyle = `rgba(${Math.round(centralShape.color.r)}, ${Math.round(centralShape.color.g)}, ${Math.round(centralShape.color.b)}, 0.1)`;
-        // Increase opacity and line width for bolder look
-        textCtx.strokeStyle = `rgba(${Math.round(centralShape.color.r)}, ${Math.round(centralShape.color.g)}, ${Math.round(centralShape.color.b)}, 1.0)`;
-        textCtx.lineWidth = 8; // Bolder line
+        textCtx.strokeStyle = `rgba(${Math.round(darkStroke.r)}, ${Math.round(darkStroke.g)}, ${Math.round(darkStroke.b)}, 1.0)`;
+        textCtx.lineWidth = 4; // Reduced boldness but higher contrast
 
         drawProceduralShape(textCtx, cx, cy, size, centralShape.sides, centralShape.rotation);
 
