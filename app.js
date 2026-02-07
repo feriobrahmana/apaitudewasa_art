@@ -314,8 +314,9 @@
         // Set style
         // Use a glowing effect? No, just clean lines
         textCtx.fillStyle = `rgba(${Math.round(centralShape.color.r)}, ${Math.round(centralShape.color.g)}, ${Math.round(centralShape.color.b)}, 0.1)`;
-        textCtx.strokeStyle = `rgba(${Math.round(centralShape.color.r)}, ${Math.round(centralShape.color.g)}, ${Math.round(centralShape.color.b)}, 0.8)`;
-        textCtx.lineWidth = 3;
+        // Increase opacity and line width for bolder look
+        textCtx.strokeStyle = `rgba(${Math.round(centralShape.color.r)}, ${Math.round(centralShape.color.g)}, ${Math.round(centralShape.color.b)}, 1.0)`;
+        textCtx.lineWidth = 8; // Bolder line
 
         drawProceduralShape(textCtx, cx, cy, size, centralShape.sides, centralShape.rotation);
 
