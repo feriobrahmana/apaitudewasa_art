@@ -72,6 +72,7 @@
     const previewCanvas = document.getElementById('previewCanvas');
     const previewCtx = previewCanvas.getContext('2d');
     const paintBtn = document.getElementById('paintBtn');
+    const wordLimitNote = document.getElementById('wordLimitNote');
 
     // State
     let currentColor = { r: 100, g: 100, b: 200 };
@@ -208,8 +209,32 @@
     });
 
     wordInput.addEventListener('input', () => {
-        const text = wordInput.value.trim();
-        paintBtn.disabled = text.length === 0;
+        let text = wordInput.value;
+        const words = text.trim().split(/\s+/);
+
+        // Check Limit
+        if (words.length > 10) {
+            // Trim to first 10 words
+            const trimmedText = words.slice(0, 10).join(" ");
+            // Only update if actually changed (to avoid cursor jumping issues if possible)
+            if (text.trim() !== trimmedText) {
+                wordInput.value = trimmedText;
+                text = trimmedText;
+            }
+        }
+
+        // Visual Warning if limit reached
+        if (words.length >= 10) {
+            wordLimitNote.classList.add('error');
+            wordInput.classList.add('error');
+            wordLimitNote.textContent = 'Limit reached (10 words max)';
+        } else {
+            wordLimitNote.classList.remove('error');
+            wordInput.classList.remove('error');
+            wordLimitNote.textContent = 'Limit: 10 words';
+        }
+
+        paintBtn.disabled = text.trim().length === 0;
     });
 
     // Placeholders for actions
