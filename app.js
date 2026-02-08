@@ -99,7 +99,7 @@
 
     async function initApp() {
         // 1. Fetch Canvas State (Background & Central Shape)
-        const { data: canvasState, error: stateError } = await supabase
+        const { data: canvasState, error: stateError } = await supabaseClient
             .from('canvas_state')
             .select('*')
             .eq('id', 1)
@@ -121,7 +121,7 @@
         }
 
         // 2. Fetch Recent Contributions (Last 50)
-        const { data: contributions, error: contribError } = await supabase
+        const { data: contributions, error: contribError } = await supabaseClient
             .from('contributions')
             .select('*')
             .order('created_at', { ascending: false })
@@ -134,7 +134,7 @@
         }
 
         // 3. Subscribe to Realtime Updates
-        supabase
+        supabaseClient
             .channel('public:contributions')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contributions' }, payload => {
                 const newContrib = payload.new;
@@ -154,7 +154,7 @@
     }
 
     async function fetchLatestState() {
-        const { data } = await supabase.from('canvas_state').select('*').eq('id', 1).single();
+        const { data } = await supabaseClient.from('canvas_state').select('*').eq('id', 1).single();
         if (data) {
             // Update targets for lerping
             centralShape.sides = data.central_shape_sides;
@@ -376,7 +376,7 @@
 
         try {
             // Call Supabase RPC
-            const { data, error } = await supabase.rpc('submit_contribution', {
+            const { data, error } = await supabaseClient.rpc('submit_contribution', {
                 p_word: text,
                 p_color: currentColor,
                 p_complexity: currentComplexity
