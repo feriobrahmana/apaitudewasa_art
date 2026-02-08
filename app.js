@@ -80,15 +80,133 @@
     let particles = [];
     const MAX_PARTICLES = 250;
 
-    // Central Shape State
+    // Central Shape State (Target)
     let centralShape = {
-        sides: 2, // Start with a Line (as requested)
-        color: { r: 200, g: 200, b: 200 }, // Start neutral
+        sides: 2,
+        color: { r: 200, g: 200, b: 200 },
         rotation: 0
     };
 
+    // Central Shape State (Current - for Lerping)
+    let currentCentralShape = {
+        sides: 2,
+        color: { r: 200, g: 200, b: 200 }
+    };
+
     // Initial setup
+    initApp();
     updateState();
+
+    async function initApp() {
+        // 1. Fetch Canvas State (Background & Central Shape)
+        const { data: canvasState, error: stateError } = await supabase
+            .from('canvas_state')
+            .select('*')
+            .eq('id', 1)
+            .single();
+
+        if (canvasState && !stateError) {
+            // Apply Background
+            const bg = canvasState.background_color;
+            paintCtx.fillStyle = `rgb(${bg.r}, ${bg.g}, ${bg.b})`;
+            paintCtx.fillRect(0, 0, width, height);
+
+            // Apply Central Shape
+            centralShape.sides = canvasState.central_shape_sides;
+            centralShape.color = canvasState.central_shape_color;
+
+            // Snap to state initially
+            currentCentralShape.sides = centralShape.sides;
+            currentCentralShape.color = { ...centralShape.color };
+        }
+
+        // 2. Fetch Recent Contributions (Last 50)
+        const { data: contributions, error: contribError } = await supabase
+            .from('contributions')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        if (contributions && !contribError) {
+            contributions.reverse().forEach(c => {
+                spawnParticle(c.word, c.color, c.complexity, true); // true = random start position
+            });
+        }
+
+        // 3. Subscribe to Realtime Updates
+        supabase
+            .channel('public:contributions')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contributions' }, payload => {
+                const newContrib = payload.new;
+                console.log('New contribution received:', newContrib);
+
+                // Spawn new particle
+                spawnParticle(newContrib.word, newContrib.color, newContrib.complexity, false);
+
+                // We should also refetch/update the canvas state to ensure perfect sync
+                // Or wait for the RPC return if WE submitted it?
+                // For other users, we need to know the new background color.
+                // The most robust way is to subscribe to canvas_state changes too, OR just blindly update state via RPC return value logic?
+                // Let's fetch latest state to be sure.
+                fetchLatestState();
+            })
+            .subscribe();
+    }
+
+    async function fetchLatestState() {
+        const { data } = await supabase.from('canvas_state').select('*').eq('id', 1).single();
+        if (data) {
+            // Update targets for lerping
+            centralShape.sides = data.central_shape_sides;
+            centralShape.color = data.central_shape_color;
+
+            // Repaint background layer?
+            // The paint layer is additive. We can't just "set" it without clearing.
+            // But if we clear, we lose history.
+            // Actually, the background color IS the aggregated history.
+            // So we CAN just clear and fill with the new average color.
+            const bg = data.background_color;
+            // paintCtx.clearRect(0, 0, width, height); // Optional: clear if we want exact color
+            // Or just paint over?
+            // "The canvas never resets on its own; it accumulates layers over time."
+            // But if we have a "current aggregated background color", we should probably display it?
+            // Let's paint a layer of the NEW background color.
+            paintCtx.fillStyle = `rgba(${bg.r}, ${bg.g}, ${bg.b}, 0.05)`; // Subtle update
+            paintCtx.fillRect(0, 0, width, height);
+        }
+    }
+
+    function spawnParticle(text, color, complexity, randomPos) {
+        // ... particle spawning logic ...
+        // Reusing existing logic but extracting function
+        const fontSize = 24;
+        let x, y;
+
+        if (randomPos) {
+             x = Math.random() * (width - 100);
+             y = Math.random() * (height - 50);
+        } else {
+             // Start near center
+             x = width / 2 + (Math.random() - 0.5) * 200;
+             y = height / 2 + (Math.random() - 0.5) * 200;
+        }
+
+        const vx = (Math.random() - 0.5) * 2;
+        const vy = (Math.random() - 0.5) * 2;
+
+        // Ensure non-zero velocity (from previous logic)
+        const speed = 0.5;
+        const angle = Math.random() * Math.PI * 2;
+        const vxFinal = Math.cos(angle) * speed;
+        const vyFinal = Math.sin(angle) * speed;
+
+        const particle = new Particle(text, color, x, y, vxFinal, vyFinal, fontSize);
+        particles.push(particle);
+
+        if (particles.length > MAX_PARTICLES) {
+            particles.shift();
+        }
+    }
 
     function updateState() {
         const r = parseInt(rSlider.value);
@@ -247,6 +365,50 @@
         }
     });
 
+    // Handle Submission via Supabase RPC
+    async function handlePaintSubmit() {
+        const text = wordInput.value.trim();
+        if (text.length === 0) return;
+
+        // Disable UI
+        paintBtn.disabled = true;
+        paintBtn.textContent = 'Adding...';
+
+        try {
+            // Call Supabase RPC
+            const { data, error } = await supabase.rpc('submit_contribution', {
+                p_word: text,
+                p_color: currentColor,
+                p_complexity: currentComplexity
+            });
+
+            if (error) throw error;
+
+            console.log('Contribution submitted successfully:', data);
+
+            // Note: We don't manually spawn the particle or update state here.
+            // We wait for the Realtime subscription (INSERT event) to handle it.
+            // This prevents double-rendering.
+
+            // Reset input
+            wordInput.value = '';
+            // Reset error state logic will run on next input or we can force check
+            // Actually input is empty now, so no error.
+            wordLimitNote.classList.remove('error');
+            wordInput.classList.remove('error');
+            wordLimitNote.textContent = 'Limit: 10 words (70 chars)';
+
+        } catch (err) {
+            console.error('Error submitting contribution:', err);
+            alert('Failed to submit. Please try again.');
+        } finally {
+            // Re-enable UI (button remains disabled if input is empty due to logic in event listener,
+            // but we need to reset text content)
+            paintBtn.textContent = 'Add to Canvas';
+            // The input listener handles the disabled state based on value
+        }
+    }
+
     class Particle {
         constructor(text, color, x, y, vx, vy, fontSize) {
             this.text = text;
@@ -295,59 +457,21 @@
         }
     }
 
-    function handlePaintSubmit() {
-        const text = wordInput.value.trim();
-        if (text.length === 0) return;
-
-        // Paint background layer (mixing effect)
-        // Reduced opacity for subtler mixing as per story-telling requirements
-        paintCtx.fillStyle = `rgba(${currentColor.r}, ${currentColor.g}, ${currentColor.b}, 0.04)`;
-        paintCtx.fillRect(0, 0, width, height);
-
-        // Spawn particle
-        const fontSize = 24; // Slightly larger for legibility
-        // Start near center with some randomness
-        const x = width / 2 + (Math.random() - 0.5) * 200;
-        const y = height / 2 + (Math.random() - 0.5) * 200;
-
-        // Gentle, constant drift (ensure it's not zero)
-        const speed = 0.5; // Pixels per frame
-        const angle = Math.random() * Math.PI * 2;
-        const vx = Math.cos(angle) * speed;
-        const vy = Math.sin(angle) * speed;
-
-        const particle = new Particle(text, currentColor, x, y, vx, vy, fontSize);
-        particles.push(particle);
-
-        // Limit max particles
-        if (particles.length > MAX_PARTICLES) {
-            particles.shift(); // Remove oldest
-        }
-
-        // --- Central Shape Evolution ---
-        // Calculate user sides (2 to 30)
-        const userSides = 2 + currentComplexity * 28;
-
-        // Average with current sides (weighted or simple average)
-        // Simple average gives significant impact
-        centralShape.sides = (centralShape.sides + userSides) / 2;
-
-        // Average Color
-        centralShape.color.r = (centralShape.color.r + currentColor.r) / 2;
-        centralShape.color.g = (centralShape.color.g + currentColor.g) / 2;
-        centralShape.color.b = (centralShape.color.b + currentColor.b) / 2;
-
-        console.log(`Evolved Shape: sides=${centralShape.sides.toFixed(2)}`);
-
-        // Reset input for next contribution
-        wordInput.value = '';
-        paintBtn.disabled = true;
-    }
+    // (Legacy handlePaintSubmit removed)
 
     // Animation Loop
     function animate() {
         // Clear text canvas only (and redraw central shape which is animated)
         textCtx.clearRect(0, 0, width, height);
+
+        // --- Interpolation (Smoothing) ---
+        // Smoothly transition current shape state towards target centralShape
+        const lerpSpeed = 0.05;
+
+        currentCentralShape.sides += (centralShape.sides - currentCentralShape.sides) * lerpSpeed;
+        currentCentralShape.color.r += (centralShape.color.r - currentCentralShape.color.r) * lerpSpeed;
+        currentCentralShape.color.g += (centralShape.color.g - currentCentralShape.color.g) * lerpSpeed;
+        currentCentralShape.color.b += (centralShape.color.b - currentCentralShape.color.b) * lerpSpeed;
 
         // Draw Central Shape
         // We draw it on textCtx so it can animate (rotate) smoothly without smearing
@@ -358,14 +482,14 @@
         centralShape.rotation += 0.005; // Slow rotation
 
         // Calculate darker stroke color for contrast
-        const darkStroke = darkenColor(centralShape.color, 50); // Darker by 50 units
+        const darkStroke = darkenColor(currentCentralShape.color, 50); // Darker by 50 units
 
         // Set style
-        textCtx.fillStyle = `rgba(${Math.round(centralShape.color.r)}, ${Math.round(centralShape.color.g)}, ${Math.round(centralShape.color.b)}, 0.1)`;
+        textCtx.fillStyle = `rgba(${Math.round(currentCentralShape.color.r)}, ${Math.round(currentCentralShape.color.g)}, ${Math.round(currentCentralShape.color.b)}, 0.1)`;
         textCtx.strokeStyle = `rgba(${Math.round(darkStroke.r)}, ${Math.round(darkStroke.g)}, ${Math.round(darkStroke.b)}, 1.0)`;
         textCtx.lineWidth = 4; // Reduced boldness but higher contrast
 
-        drawProceduralShape(textCtx, cx, cy, size, centralShape.sides, centralShape.rotation);
+        drawProceduralShape(textCtx, cx, cy, size, currentCentralShape.sides, centralShape.rotation);
 
         // Update and draw particles
         for (let i = 0; i < particles.length; i++) {
