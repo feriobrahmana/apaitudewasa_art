@@ -109,19 +109,23 @@
             .eq('id', 1)
             .single();
 
-        if (canvasState && !stateError) {
+        if (canvasState && !stateError && canvasState.background_color) {
             // Apply Background
             const bg = canvasState.background_color;
             paintCtx.fillStyle = `rgb(${bg.r}, ${bg.g}, ${bg.b})`;
             paintCtx.fillRect(0, 0, width, height);
 
             // Apply Central Shape
-            centralShape.sides = canvasState.central_shape_sides;
-            centralShape.color = canvasState.central_shape_color;
-
-            // Snap to state initially
-            currentCentralShape.sides = centralShape.sides;
-            currentCentralShape.color = { ...centralShape.color };
+            if (canvasState.central_shape_sides) {
+                centralShape.sides = canvasState.central_shape_sides;
+                currentCentralShape.sides = centralShape.sides;
+            }
+            if (canvasState.central_shape_color) {
+                centralShape.color = canvasState.central_shape_color;
+                currentCentralShape.color = { ...centralShape.color };
+            }
+        } else {
+            console.warn('Canvas state not found or incomplete, using defaults.');
         }
 
         // 2. Fetch Recent Contributions (Last 50)
@@ -386,7 +390,10 @@
                 p_complexity: currentComplexity
             });
 
-            if (error) throw error;
+            if (error) {
+                console.error('RPC Error:', error);
+                throw error;
+            }
 
             console.log('Contribution submitted successfully:', data);
 
