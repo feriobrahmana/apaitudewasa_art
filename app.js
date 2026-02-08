@@ -110,7 +110,9 @@
         previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
         // 1. Color Swatch (Left 1/3)
-        previewCtx.fillStyle = `rgb(${currentColor.r}, ${currentColor.g}, ${currentColor.b})`;
+        // Use lower opacity to match the translucent nature of the paint layer
+        // Slightly higher than 0.04 (paint) to be visible, but clearly not opaque
+        previewCtx.fillStyle = `rgba(${currentColor.r}, ${currentColor.g}, ${currentColor.b}, 0.2)`;
         previewCtx.fillRect(0, 0, previewCanvas.width * 0.3, previewCanvas.height);
 
         // 2. Shape Preview (Right 2/3)
