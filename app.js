@@ -224,14 +224,14 @@
         }
 
         // Visual Warning if limit reached
-        if (words.length >= 10) {
+        if (words.length >= 10 || text.length >= 70) {
             wordLimitNote.classList.add('error');
             wordInput.classList.add('error');
-            wordLimitNote.textContent = 'Limit reached (10 words max)';
+            wordLimitNote.textContent = 'Limit reached (10 words / 70 chars)';
         } else {
             wordLimitNote.classList.remove('error');
             wordInput.classList.remove('error');
-            wordLimitNote.textContent = 'Limit: 10 words';
+            wordLimitNote.textContent = 'Limit: 10 words (70 chars)';
         }
 
         paintBtn.disabled = text.trim().length === 0;
