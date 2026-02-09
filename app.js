@@ -141,22 +141,35 @@
             });
         }
 
-        // 3. Subscribe to Realtime Updates
-        supabase
-            .channel('public:contributions')
+        // 3. Subscribe to Realtime Updates (Contributions)
+        const channel = supabase.channel('public:contributions');
+
+        channel
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contributions' }, payload => {
                 const newContrib = payload.new;
                 console.log('New contribution received:', newContrib);
 
                 // Spawn new particle
                 spawnParticle(newContrib.word, newContrib.color, newContrib.complexity, false);
+            })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'canvas_state' }, payload => {
+                const newState = payload.new;
+                console.log('Canvas state updated:', newState);
 
-                // We should also refetch/update the canvas state to ensure perfect sync
-                // Or wait for the RPC return if WE submitted it?
-                // For other users, we need to know the new background color.
-                // The most robust way is to subscribe to canvas_state changes too, OR just blindly update state via RPC return value logic?
-                // Let's fetch latest state to be sure.
-                fetchLatestState();
+                // Update central shape target
+                if (newState.central_shape_sides) {
+                    centralShape.sides = newState.central_shape_sides;
+                }
+                if (newState.central_shape_color) {
+                    centralShape.color = newState.central_shape_color;
+                }
+
+                // Update background immediately
+                if (newState.background_color) {
+                    const bg = newState.background_color;
+                    paintCtx.fillStyle = `rgba(${bg.r}, ${bg.g}, ${bg.b}, 0.05)`;
+                    paintCtx.fillRect(0, 0, width, height);
+                }
             })
             .subscribe();
     }
@@ -168,18 +181,11 @@
             centralShape.sides = data.central_shape_sides;
             centralShape.color = data.central_shape_color;
 
-            // Repaint background layer?
-            // The paint layer is additive. We can't just "set" it without clearing.
-            // But if we clear, we lose history.
-            // Actually, the background color IS the aggregated history.
-            // So we CAN just clear and fill with the new average color.
+            // Update Background Color (Authoritative)
+            // The server has already calculated the new mixed color.
+            // We should display this color exactly as it is (opaque), matching the refresh behavior.
             const bg = data.background_color;
-            // paintCtx.clearRect(0, 0, width, height); // Optional: clear if we want exact color
-            // Or just paint over?
-            // "The canvas never resets on its own; it accumulates layers over time."
-            // But if we have a "current aggregated background color", we should probably display it?
-            // Let's paint a layer of the NEW background color.
-            paintCtx.fillStyle = `rgba(${bg.r}, ${bg.g}, ${bg.b}, 0.05)`; // Subtle update
+            paintCtx.fillStyle = `rgb(${bg.r}, ${bg.g}, ${bg.b})`;
             paintCtx.fillRect(0, 0, width, height);
         }
     }
@@ -397,9 +403,9 @@
 
             console.log('Contribution submitted successfully:', data);
 
-            // Note: We don't manually spawn the particle or update state here.
-            // We wait for the Realtime subscription (INSERT event) to handle it.
-            // This prevents double-rendering.
+            // Fetch latest state immediately to update the local UI without waiting for Realtime
+            // This ensures the user sees their change instantly
+            fetchLatestState();
 
             // Reset input
             wordInput.value = '';
