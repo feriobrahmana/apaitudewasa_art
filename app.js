@@ -15,42 +15,18 @@
     let width, height;
 
     /**
-     * Resizes canvases and preserves paint layer.
+     * Resizes canvases.
+     * Background is redrawn in the animation loop.
      */
     function resizeCanvas() {
         const newWidth = window.innerWidth;
         const newHeight = window.innerHeight;
 
-        // If canvas already has content (not first run), save it
-        if (width && height) {
-            // Create temporary canvas
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
-            const tempCtx = tempCanvas.getContext('2d');
-
-            // Draw current paint canvas to temp
-            tempCtx.drawImage(paintCanvas, 0, 0);
-
-            // Resize main canvases (this clears them)
-            paintCanvas.width = newWidth;
-            paintCanvas.height = newHeight;
-            textCanvas.width = newWidth;
-            textCanvas.height = newHeight;
-
-            // Draw back scaled image
-            paintCtx.drawImage(tempCanvas, 0, 0, width, height, 0, 0, newWidth, newHeight);
-        } else {
-            // Initial sizing
-            paintCanvas.width = newWidth;
-            paintCanvas.height = newHeight;
-            textCanvas.width = newWidth;
-            textCanvas.height = newHeight;
-
-            // Fill initial background white
-            paintCtx.fillStyle = '#ffffff';
-            paintCtx.fillRect(0, 0, newWidth, newHeight);
-        }
+        // Resize main canvases (this clears them)
+        paintCanvas.width = newWidth;
+        paintCanvas.height = newHeight;
+        textCanvas.width = newWidth;
+        textCanvas.height = newHeight;
 
         width = newWidth;
         height = newHeight;
@@ -97,6 +73,10 @@
         color: { r: 200, g: 200, b: 200 }
     };
 
+    // Background Color State (Target & Current)
+    let targetBackgroundColor = { r: 255, g: 255, b: 255 };
+    let currentBackgroundColor = { r: 255, g: 255, b: 255 };
+
     // Initial setup
     initApp();
     updateState();
@@ -110,10 +90,10 @@
             .single();
 
         if (canvasState && !stateError && canvasState.background_color) {
-            // Apply Background
+            // Apply Background State
             const bg = canvasState.background_color;
-            paintCtx.fillStyle = `rgb(${bg.r}, ${bg.g}, ${bg.b})`;
-            paintCtx.fillRect(0, 0, width, height);
+            targetBackgroundColor = { ...bg };
+            currentBackgroundColor = { ...bg }; // Start immediately at this color without transition
 
             // Apply Central Shape
             if (canvasState.central_shape_sides) {
@@ -164,11 +144,9 @@
                     centralShape.color = newState.central_shape_color;
                 }
 
-                // Update background immediately
+                // Update background target
                 if (newState.background_color) {
-                    const bg = newState.background_color;
-                    paintCtx.fillStyle = `rgba(${bg.r}, ${bg.g}, ${bg.b}, 0.05)`;
-                    paintCtx.fillRect(0, 0, width, height);
+                    targetBackgroundColor = newState.background_color;
                 }
             })
             .subscribe();
@@ -181,18 +159,12 @@
             centralShape.sides = data.central_shape_sides;
             centralShape.color = data.central_shape_color;
 
-            // Update Background Color (Authoritative)
-            // The server has already calculated the new mixed color.
-            // We should display this color exactly as it is (opaque), matching the refresh behavior.
-            const bg = data.background_color;
-            paintCtx.fillStyle = `rgb(${bg.r}, ${bg.g}, ${bg.b})`;
-            paintCtx.fillRect(0, 0, width, height);
+            // Update Background Target
+            targetBackgroundColor = data.background_color;
         }
     }
 
     function spawnParticle(text, color, complexity, randomPos) {
-        // ... particle spawning logic ...
-        // Reusing existing logic but extracting function
         const fontSize = 24;
         let x, y;
 
@@ -205,10 +177,7 @@
              y = height / 2 + (Math.random() - 0.5) * 200;
         }
 
-        const vx = (Math.random() - 0.5) * 2;
-        const vy = (Math.random() - 0.5) * 2;
-
-        // Ensure non-zero velocity (from previous logic)
+        // Ensure non-zero velocity
         const speed = 0.5;
         const angle = Math.random() * Math.PI * 2;
         const vxFinal = Math.cos(angle) * speed;
@@ -474,21 +443,29 @@
         }
     }
 
-    // (Legacy handlePaintSubmit removed)
-
     // Animation Loop
     function animate() {
-        // Clear text canvas only (and redraw central shape which is animated)
+        // --- Background Color Interpolation ---
+        const bgLerpSpeed = 0.05;
+        currentBackgroundColor.r += (targetBackgroundColor.r - currentBackgroundColor.r) * bgLerpSpeed;
+        currentBackgroundColor.g += (targetBackgroundColor.g - currentBackgroundColor.g) * bgLerpSpeed;
+        currentBackgroundColor.b += (targetBackgroundColor.b - currentBackgroundColor.b) * bgLerpSpeed;
+
+        // Draw Background
+        paintCtx.fillStyle = `rgb(${Math.round(currentBackgroundColor.r)}, ${Math.round(currentBackgroundColor.g)}, ${Math.round(currentBackgroundColor.b)})`;
+        paintCtx.fillRect(0, 0, width, height);
+
+        // --- Central Shape Interpolation ---
+        // Smoothly transition current shape state towards target centralShape
+        const shapeLerpSpeed = 0.05;
+
+        // Clear text canvas only (so particles and shape redraw)
         textCtx.clearRect(0, 0, width, height);
 
-        // --- Interpolation (Smoothing) ---
-        // Smoothly transition current shape state towards target centralShape
-        const lerpSpeed = 0.05;
-
-        currentCentralShape.sides += (centralShape.sides - currentCentralShape.sides) * lerpSpeed;
-        currentCentralShape.color.r += (centralShape.color.r - currentCentralShape.color.r) * lerpSpeed;
-        currentCentralShape.color.g += (centralShape.color.g - currentCentralShape.color.g) * lerpSpeed;
-        currentCentralShape.color.b += (centralShape.color.b - currentCentralShape.color.b) * lerpSpeed;
+        currentCentralShape.sides += (centralShape.sides - currentCentralShape.sides) * shapeLerpSpeed;
+        currentCentralShape.color.r += (centralShape.color.r - currentCentralShape.color.r) * shapeLerpSpeed;
+        currentCentralShape.color.g += (centralShape.color.g - currentCentralShape.color.g) * shapeLerpSpeed;
+        currentCentralShape.color.b += (centralShape.color.b - currentCentralShape.color.b) * shapeLerpSpeed;
 
         // Draw Central Shape
         // We draw it on textCtx so it can animate (rotate) smoothly without smearing
