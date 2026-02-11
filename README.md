@@ -5,12 +5,14 @@ A "living canvas" art project built with vanilla HTML5, CSS3, and JavaScript.
 ## Overview
 
 This project allows users to collaboratively (or individually) paint a persistent, evolving canvas by submitting words and colors.
-*   **Canvas State:** The canvas background color and central shape continuously evolve based on the average of all user contributions.
+*   **Canvas State:** The canvas background color and central shape continuously evolve based on the inputs of user contributions.
+*   **Realistic Mixing:** Uses **Mixbox** (pigment-based mixing) to ensure colors blend naturally (e.g., Red + Green = Yellow), creating a vibrant, non-muddy aesthetic.
 *   **Text Particles:** Submitted words spawn as floating, bouncing particles on top of the paint layer.
 
 ## Features
 
 *   **Real-time Visualization:** Persistent background color and central shape that smoothly transition to reflect the collective state.
+*   **Pigment Color Mixing:** Integrated `mixbox.js` for high-quality subtractive/additive color blending.
 *   **Particle System:** Bouncing text particles with physics (velocity, friction, collision).
 *   **Responsive:** Works on desktop and mobile. Canvas resizes dynamically while preserving the artwork.
 *   **Minimalist UI:** Collapsible control panel with a clean, adult aesthetic.
@@ -29,7 +31,7 @@ This project allows users to collaboratively (or individually) paint a persisten
 4.  **Paint + Submit:** Click the button (or press Enter) to:
     *   Submit your contribution to the collective.
     *   Spawn your word as a bouncing particle.
-    *   Watch the background color and central shape shift towards your input.
+    *   Watch the background color and central shape shift towards your input using realistic pigment mixing.
 
 ## Deployment
 
@@ -44,7 +46,7 @@ This is a static site. You can deploy it for free using **GitHub Pages**:
 ## Customization
 
 *   **Particle Count:** Adjust `MAX_PARTICLES` in `app.js` (default 250).
-*   **Smoothness:** Adjust `bgLerpSpeed` and `shapeLerpSpeed` in `app.js` (default 0.05).
+*   **Mixing Speed:** Adjust `bgLerpSpeed` in `app.js` (default 0.05).
 *   **Font:** Change the `font-family` in `styles.css` and `app.js`.
 
 ## License

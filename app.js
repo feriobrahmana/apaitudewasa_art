@@ -149,7 +149,9 @@
                     targetBackgroundColor = newState.background_color;
                 }
             })
-            .subscribe();
+            .subscribe((status) => {
+                console.log('Supabase subscription status:', status);
+            });
     }
 
     async function fetchLatestState() {
@@ -445,11 +447,33 @@
 
     // Animation Loop
     function animate() {
-        // --- Background Color Interpolation ---
+        // --- Background Color Interpolation using Mixbox ---
         const bgLerpSpeed = 0.05;
-        currentBackgroundColor.r += (targetBackgroundColor.r - currentBackgroundColor.r) * bgLerpSpeed;
-        currentBackgroundColor.g += (targetBackgroundColor.g - currentBackgroundColor.g) * bgLerpSpeed;
-        currentBackgroundColor.b += (targetBackgroundColor.b - currentBackgroundColor.b) * bgLerpSpeed;
+
+        // Check if mixbox is loaded
+        if (typeof mixbox !== 'undefined' && mixbox.lerp) {
+            const currentRgb = [currentBackgroundColor.r, currentBackgroundColor.g, currentBackgroundColor.b];
+            const targetRgb = [targetBackgroundColor.r, targetBackgroundColor.g, targetBackgroundColor.b];
+
+            // Use mixbox.lerp to get the intermediate color
+            const mixedRgb = mixbox.lerp(currentRgb, targetRgb, bgLerpSpeed);
+
+            // mixbox.lerp returns [r, g, b] (or with alpha)
+            // Update currentBackgroundColor state
+            // Note: lerp returns the *result* of the mix at time `t`.
+            // Since we want to approach the target smoothly frame-by-frame:
+            // We treat 'current' as the start and 'target' as the end, and we move 5% towards it.
+            // However, simply setting current = mix(current, target, 0.05) works for "easing" logic.
+
+            currentBackgroundColor.r = mixedRgb[0];
+            currentBackgroundColor.g = mixedRgb[1];
+            currentBackgroundColor.b = mixedRgb[2];
+        } else {
+            // Fallback to linear if mixbox fails to load
+            currentBackgroundColor.r += (targetBackgroundColor.r - currentBackgroundColor.r) * bgLerpSpeed;
+            currentBackgroundColor.g += (targetBackgroundColor.g - currentBackgroundColor.g) * bgLerpSpeed;
+            currentBackgroundColor.b += (targetBackgroundColor.b - currentBackgroundColor.b) * bgLerpSpeed;
+        }
 
         // Draw Background
         paintCtx.fillStyle = `rgb(${Math.round(currentBackgroundColor.r)}, ${Math.round(currentBackgroundColor.g)}, ${Math.round(currentBackgroundColor.b)})`;
@@ -463,12 +487,14 @@
         textCtx.clearRect(0, 0, width, height);
 
         currentCentralShape.sides += (centralShape.sides - currentCentralShape.sides) * shapeLerpSpeed;
+
+        // Shape color interpolation (using mixbox here too for consistency? Or standard lerp?)
+        // Standard lerp for shape color is fine, but mixbox might look nicer. Let's stick to standard to minimize complexity unless requested.
         currentCentralShape.color.r += (centralShape.color.r - currentCentralShape.color.r) * shapeLerpSpeed;
         currentCentralShape.color.g += (centralShape.color.g - currentCentralShape.color.g) * shapeLerpSpeed;
         currentCentralShape.color.b += (centralShape.color.b - currentCentralShape.color.b) * shapeLerpSpeed;
 
         // Draw Central Shape
-        // We draw it on textCtx so it can animate (rotate) smoothly without smearing
         const cx = width / 2;
         const cy = height / 2;
         const size = Math.min(width, height) * 0.25; // Large size
@@ -476,12 +502,12 @@
         centralShape.rotation += 0.005; // Slow rotation
 
         // Calculate darker stroke color for contrast
-        const darkStroke = darkenColor(currentCentralShape.color, 50); // Darker by 50 units
+        const darkStroke = darkenColor(currentCentralShape.color, 50);
 
         // Set style
         textCtx.fillStyle = `rgba(${Math.round(currentCentralShape.color.r)}, ${Math.round(currentCentralShape.color.g)}, ${Math.round(currentCentralShape.color.b)}, 0.1)`;
         textCtx.strokeStyle = `rgba(${Math.round(darkStroke.r)}, ${Math.round(darkStroke.g)}, ${Math.round(darkStroke.b)}, 1.0)`;
-        textCtx.lineWidth = 4; // Reduced boldness but higher contrast
+        textCtx.lineWidth = 4;
 
         drawProceduralShape(textCtx, cx, cy, size, currentCentralShape.sides, centralShape.rotation);
 
