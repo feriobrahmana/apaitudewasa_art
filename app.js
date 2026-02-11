@@ -1,525 +1,295 @@
+
 (function() {
     'use strict';
 
-    // Supabase Client Alias (from supabaseClient.js)
-    // We use 'supabase' locally to match existing code structure
-    const supabase = supabaseClient;
+    console.log('--- REWRITE: Living Canvas Starting ---');
 
-    // Canvas elements
+    // 1. Dependency Check: Mixbox
+    if (typeof mixbox === 'undefined') {
+        console.error('CRITICAL: mixbox.js not loaded!');
+        alert('Error: mixbox.js is missing. Please check your internet connection or deployment.');
+        return;
+    }
+
+    // 2. Supabase Setup
+    // Ensure supabaseClient is available (from the script tag in HTML)
+    const supabase = (typeof supabaseClient !== 'undefined') ? supabaseClient : null;
+    if (!supabase) {
+        console.error('CRITICAL: Supabase client not initialized.');
+    }
+
+    // 3. Canvas Setup
     const paintCanvas = document.getElementById('paintCanvas');
     const textCanvas = document.getElementById('textCanvas');
     const paintCtx = paintCanvas.getContext('2d');
     const textCtx = textCanvas.getContext('2d');
 
-    // Canvas Dimensions
-    let width, height;
+    let width = window.innerWidth;
+    let height = window.innerHeight;
 
-    /**
-     * Resizes canvases.
-     * Background is redrawn in the animation loop.
-     */
-    function resizeCanvas() {
-        const newWidth = window.innerWidth;
-        const newHeight = window.innerHeight;
-
-        // Resize main canvases (this clears them)
-        paintCanvas.width = newWidth;
-        paintCanvas.height = newHeight;
-        textCanvas.width = newWidth;
-        textCanvas.height = newHeight;
-
-        width = newWidth;
-        height = newHeight;
+    function resize() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        paintCanvas.width = width;
+        paintCanvas.height = height;
+        textCanvas.width = width;
+        textCanvas.height = height;
     }
+    window.addEventListener('resize', resize);
+    resize();
 
-    // Initial sizing
-    resizeCanvas();
-
-    // Event listener for resize
-    window.addEventListener('resize', resizeCanvas);
-
-    // --- UI Logic ---
-
-    // UI Elements
-    const uiToggle = document.getElementById('ui-toggle');
-    const uiToggleIcon = uiToggle.querySelector('.icon');
-    const uiPanel = document.getElementById('ui-panel');
-    const wordInput = document.getElementById('wordInput');
-    const rSlider = document.getElementById('rSlider');
-    const gSlider = document.getElementById('gSlider');
-    const bSlider = document.getElementById('bSlider');
-    const cSlider = document.getElementById('cSlider'); // Complexity
-    const previewCanvas = document.getElementById('previewCanvas');
-    const previewCtx = previewCanvas.getContext('2d');
-    const paintBtn = document.getElementById('paintBtn');
-    const wordLimitNote = document.getElementById('wordLimitNote');
-
-    // State
-    let currentColor = { r: 100, g: 100, b: 200 };
-    let currentComplexity = 0.5;
-    let particles = [];
-    const MAX_PARTICLES = 250;
-
-    // Central Shape State (Target)
-    let centralShape = {
-        sides: 2,
-        color: { r: 200, g: 200, b: 200 },
-        rotation: 0
+    // 4. State Management
+    // We use "Target" vs "Current" for smooth animation
+    const state = {
+        bg: {
+            current: [255, 255, 255], // RGB Array for mixbox
+            target: [255, 255, 255]   // RGB Array for mixbox
+        },
+        shape: {
+            currentSides: 4,
+            targetSides: 4,
+            currentColor: [200, 200, 200],
+            targetColor: [200, 200, 200],
+            rotation: 0
+        },
+        particles: [], // Array of {x, y, vx, vy, text, color}
     };
 
-    // Central Shape State (Current - for Lerping)
-    let currentCentralShape = {
-        sides: 2,
-        color: { r: 200, g: 200, b: 200 }
+    const CONSTANTS = {
+        MIX_SPEED: 0.15, // Speed of color transition (0.0 to 1.0)
+        PARTICLE_LIMIT: 50,
+        FONT: '24px "Times New Roman"'
     };
 
-    // Background Color State (Target & Current)
-    let targetBackgroundColor = { r: 255, g: 255, b: 255 };
-    let currentBackgroundColor = { r: 255, g: 255, b: 255 };
-
-    // Initial setup
-    initApp();
-    updateState();
-
-    async function initApp() {
-        // 1. Fetch Canvas State (Background & Central Shape)
-        const { data: canvasState, error: stateError } = await supabase
-            .from('canvas_state')
-            .select('*')
-            .eq('id', 1)
-            .single();
-
-        if (canvasState && !stateError && canvasState.background_color) {
-            // Apply Background State
-            const bg = canvasState.background_color;
-            targetBackgroundColor = { ...bg };
-            currentBackgroundColor = { ...bg }; // Start immediately at this color without transition
-
-            // Apply Central Shape
-            if (canvasState.central_shape_sides) {
-                centralShape.sides = canvasState.central_shape_sides;
-                currentCentralShape.sides = centralShape.sides;
-            }
-            if (canvasState.central_shape_color) {
-                centralShape.color = canvasState.central_shape_color;
-                currentCentralShape.color = { ...centralShape.color };
-            }
-        } else {
-            console.warn('Canvas state not found or incomplete, using defaults.');
-        }
-
-        // 2. Fetch Recent Contributions (Last 50)
-        const { data: contributions, error: contribError } = await supabase
-            .from('contributions')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-        if (contributions && !contribError) {
-            contributions.reverse().forEach(c => {
-                spawnParticle(c.word, c.color, c.complexity, true); // true = random start position
-            });
-        }
-
-        // 3. Subscribe to Realtime Updates (Contributions)
-        const channel = supabase.channel('public:contributions');
-
-        channel
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contributions' }, payload => {
-                const newContrib = payload.new;
-                console.log('New contribution received:', newContrib);
-
-                // Spawn new particle (Normal flow)
-                spawnParticle(newContrib.word, newContrib.color, newContrib.complexity, false);
-            })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'canvas_state' }, payload => {
-                const newState = payload.new;
-                console.log('Canvas state updated:', newState);
-
-                // Update central shape target
-                if (newState.central_shape_sides) {
-                    centralShape.sides = newState.central_shape_sides;
-                }
-                if (newState.central_shape_color) {
-                    centralShape.color = newState.central_shape_color;
-                }
-
-                // Update background target
-                if (newState.background_color) {
-                    targetBackgroundColor = newState.background_color;
-                }
-            })
-            .subscribe((status) => {
-                console.log('Supabase subscription status:', status);
-            });
-    }
-
-    async function fetchLatestState() {
-        const { data } = await supabase.from('canvas_state').select('*').eq('id', 1).single();
-        if (data) {
-            // Update targets for lerping
-            centralShape.sides = data.central_shape_sides;
-            centralShape.color = data.central_shape_color;
-
-            // Update Background Target
-            targetBackgroundColor = data.background_color;
-        }
-    }
-
-    function spawnParticle(text, color, complexity, randomPos) {
-        const fontSize = 24;
-        let x, y;
-
-        if (randomPos) {
-             x = Math.random() * (width - 100);
-             y = Math.random() * (height - 50);
-        } else {
-             // Start near center
-             x = width / 2 + (Math.random() - 0.5) * 200;
-             y = height / 2 + (Math.random() - 0.5) * 200;
-        }
-
-        // Ensure non-zero velocity
-        const speed = 0.5;
-        const angle = Math.random() * Math.PI * 2;
-        const vxFinal = Math.cos(angle) * speed;
-        const vyFinal = Math.sin(angle) * speed;
-
-        const particle = new Particle(text, color, x, y, vxFinal, vyFinal, fontSize);
-        particles.push(particle);
-
-        if (particles.length > MAX_PARTICLES) {
-            particles.shift();
-        }
-    }
-
-    function updateState() {
-        const r = parseInt(rSlider.value);
-        const g = parseInt(gSlider.value);
-        const b = parseInt(bSlider.value);
-        const c = parseInt(cSlider.value) / 100; // 0.0 to 1.0
-
-        currentColor = { r, g, b };
-        currentComplexity = c;
-
-        drawPreview();
-    }
-
-    function drawPreview() {
-        // Clear preview
-        previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-
-        // Background
-        previewCtx.fillStyle = '#fff';
-        previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
-
-        // 1. Color Swatch (Left 1/3)
-        // Use lower opacity to match the translucent nature of the paint layer
-        // Slightly higher than 0.04 (paint) to be visible, but clearly not opaque
-        previewCtx.fillStyle = `rgba(${currentColor.r}, ${currentColor.g}, ${currentColor.b}, 0.2)`;
-        previewCtx.fillRect(0, 0, previewCanvas.width * 0.3, previewCanvas.height);
-
-        // 2. Shape Preview (Right 2/3)
-        const cx = previewCanvas.width * 0.65;
-        const cy = previewCanvas.height / 2;
-        const size = 20;
-
-        // Use darker stroke for visibility
-        const darkColor = darkenColor(currentColor, 40);
-        previewCtx.strokeStyle = `rgb(${darkColor.r}, ${darkColor.g}, ${darkColor.b})`;
-        previewCtx.fillStyle = `rgba(${currentColor.r}, ${currentColor.g}, ${currentColor.b}, 0.2)`;
-        previewCtx.lineWidth = 2;
-
-        // Draw the current "User" shape based on sliders
-        drawProceduralShape(previewCtx, cx, cy, size, currentComplexity, 0);
-        previewCtx.fill(); // Fill slightly
-    }
-
-    // Helper to darken color
-    function darkenColor(color, amount) {
-        return {
-            r: Math.max(0, color.r - amount),
-            g: Math.max(0, color.g - amount),
-            b: Math.max(0, color.b - amount)
-        };
-    }
-
-    // Procedural Shape Generator
-    // Used for both preview and central shape
-    // complexity: 0 to 1 (maps to sides 2 to ~30)
-    // OR directly pass 'sides' if we pre-calculate
-    function drawProceduralShape(ctx, cx, cy, size, complexityOrSides, angleOffset) {
-        ctx.beginPath();
-
-        let vertices;
-        if (complexityOrSides <= 1.0) {
-            // Map complexity (0-1) to sides (2 to 30)
-            // 0 -> 2 (Line)
-            // 1 -> 30 (Circle)
-            vertices = 2 + complexityOrSides * 28;
-        } else {
-            // Direct side count
-            vertices = complexityOrSides;
-        }
-
-        // For drawing, we floor it unless we want to animate between integers (tricky)
-        // Let's use floor for sides, but maybe interpolate radius?
-        // Actually, let's keep it simple: strict polygons.
-        const sides = Math.max(2, Math.floor(vertices));
-        const step = (Math.PI * 2) / sides;
-
-        // Line case (2 sides) needs special handling to look good?
-        // A "2-sided polygon" is just a flat line back and forth.
-
-        for (let i = 0; i < sides; i++) {
-            const theta = i * step + angleOffset;
-            const x = cx + Math.cos(theta) * size;
-            const y = cy + Math.sin(theta) * size;
-
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-
-        ctx.closePath();
-
-        // Stroke or Fill?
-        // Let's stroke it for "blueprint" look, maybe fill slightly
-        ctx.strokeStyle = ctx.fillStyle;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        // ctx.fill(); // Optional
-    }
-
-    // Event Listeners
-    rSlider.addEventListener('input', updateState);
-    gSlider.addEventListener('input', updateState);
-    bSlider.addEventListener('input', updateState);
-    cSlider.addEventListener('input', updateState);
-
-    uiToggle.addEventListener('click', () => {
-        // Toggle the class
-        uiPanel.classList.toggle('hidden');
-
-        // Check actual state after toggle
-        const isHidden = uiPanel.classList.contains('hidden');
-
-        // Update text
-        if (isHidden) {
-            uiToggleIcon.textContent = 'Contribute';
-        } else {
-            uiToggleIcon.textContent = 'Close';
-        }
-    });
-
-    wordInput.addEventListener('input', () => {
-        let text = wordInput.value;
-        const words = text.trim().split(/\s+/);
-
-        // Check Limit
-        if (words.length > 10) {
-            // Trim to first 10 words
-            const trimmedText = words.slice(0, 10).join(" ");
-            // Only update if actually changed (to avoid cursor jumping issues if possible)
-            if (text.trim() !== trimmedText) {
-                wordInput.value = trimmedText;
-                text = trimmedText;
-            }
-        }
-
-        // Visual Warning if limit reached
-        if (words.length >= 10 || text.length >= 70) {
-            wordLimitNote.classList.add('error');
-            wordInput.classList.add('error');
-            wordLimitNote.textContent = 'Limit reached (10 words / 70 chars)';
-        } else {
-            wordLimitNote.classList.remove('error');
-            wordInput.classList.remove('error');
-            wordLimitNote.textContent = 'Limit: 10 words (70 chars)';
-        }
-
-        paintBtn.disabled = text.trim().length === 0;
-    });
-
-    // Placeholders for actions
-    paintBtn.addEventListener('click', handlePaintSubmit);
-
-    // Allow Enter key to submit
-    wordInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !paintBtn.disabled) {
-            handlePaintSubmit();
-        }
-    });
-
-    // Handle Submission via Supabase RPC
-    async function handlePaintSubmit() {
-        const text = wordInput.value.trim();
-        if (text.length === 0) return;
-
-        // Disable UI
-        paintBtn.disabled = true;
-        paintBtn.textContent = 'Adding...';
-
-        // --- Optimistic UI Update ---
-        // Spawn the particle immediately for the user
-        spawnParticle(text, currentColor, currentComplexity, false);
-        // Also optimistically nudge the background color (if we wanted to cheat visually)
-        // But mixbox lerp speed increase should handle the visual impact once the state returns.
-
-        try {
-            // Call Supabase RPC
-            const { data, error } = await supabase.rpc('submit_contribution', {
-                p_word: text,
-                p_color: currentColor,
-                p_complexity: currentComplexity
-            });
-
-            if (error) {
-                console.error('RPC Error:', error);
-                throw error;
-            }
-
-            console.log('Contribution submitted successfully:', data);
-
-            // Fetch latest state immediately to update the local UI without waiting for Realtime
-            // This ensures the user sees their change instantly
-            fetchLatestState();
-
-            // Reset input
-            wordInput.value = '';
-            // Reset error state logic will run on next input or we can force check
-            // Actually input is empty now, so no error.
-            wordLimitNote.classList.remove('error');
-            wordInput.classList.remove('error');
-            wordLimitNote.textContent = 'Limit: 10 words (70 chars)';
-
-        } catch (err) {
-            console.error('Error submitting contribution:', err);
-            alert('Failed to submit. Please try again.');
-        } finally {
-            // Re-enable UI (button remains disabled if input is empty due to logic in event listener,
-            // but we need to reset text content)
-            paintBtn.textContent = 'Add to Canvas';
-            // The input listener handles the disabled state based on value
-        }
-    }
-
-    class Particle {
-        constructor(text, color, x, y, vx, vy, fontSize) {
-            this.text = text;
-            this.color = { ...color }; // Copy color object
-            this.x = x;
-            this.y = y;
-            this.vx = vx;
-            this.vy = vy;
-            this.fontSize = fontSize;
-
-            // Measure dimensions
-            textCtx.font = `${this.fontSize}px "Times New Roman"`;
-            this.width = textCtx.measureText(this.text).width;
-            this.height = this.fontSize; // Approximate height for collision
-        }
-
-        update() {
-            this.x += this.vx;
-            this.y += this.vy;
-
-            // Bounce X
-            if (this.x < 0) {
-                this.x = 0;
-                this.vx *= -1;
-            } else if (this.x + this.width > width) {
-                this.x = width - this.width;
-                this.vx *= -1;
-            }
-
-            // Bounce Y (assuming textBaseline = 'top')
-            if (this.y < 0) {
-                this.y = 0;
-                this.vy *= -1;
-            } else if (this.y + this.height > height) {
-                this.y = height - this.height;
-                this.vy *= -1;
-            }
-        }
-
-        draw() {
-            // Draw Text
-            textCtx.font = `${this.fontSize}px "Times New Roman"`;
-            textCtx.fillStyle = `rgb(${this.color.r}, ${this.color.g}, ${this.color.b})`;
-            textCtx.textBaseline = 'top';
-            textCtx.fillText(this.text, this.x, this.y);
-        }
-    }
-
-    // Animation Loop
+    // 5. Core Logic: The Loop
     function animate() {
-        // --- Background Color Interpolation using Mixbox ---
-        // INCREASED SPEED: from 0.05 to 0.2 to make contributions clearly visible
-        const bgLerpSpeed = 0.2;
+        // A. Clear Layers
+        // paintCanvas is cleared by fillRect
+        textCtx.clearRect(0, 0, width, height);
 
-        // Check if mixbox is loaded
-        if (typeof mixbox !== 'undefined' && mixbox.lerp) {
-            const currentRgb = [currentBackgroundColor.r, currentBackgroundColor.g, currentBackgroundColor.b];
-            const targetRgb = [targetBackgroundColor.r, targetBackgroundColor.g, targetBackgroundColor.b];
-
-            // Use mixbox.lerp to get the intermediate color
-            const mixedRgb = mixbox.lerp(currentRgb, targetRgb, bgLerpSpeed);
-
-            currentBackgroundColor.r = mixedRgb[0];
-            currentBackgroundColor.g = mixedRgb[1];
-            currentBackgroundColor.b = mixedRgb[2];
-        } else {
-            // Fallback to linear if mixbox fails to load
-            currentBackgroundColor.r += (targetBackgroundColor.r - currentBackgroundColor.r) * bgLerpSpeed;
-            currentBackgroundColor.g += (targetBackgroundColor.g - currentBackgroundColor.g) * bgLerpSpeed;
-            currentBackgroundColor.b += (targetBackgroundColor.b - currentBackgroundColor.b) * bgLerpSpeed;
+        // B. Background Color Mixing (Mixbox)
+        // mixbox.lerp(color1, color2, t) -> returns new color
+        // We want to move 'current' towards 'target'
+        if (state.bg.target) {
+            state.bg.current = mixbox.lerp(state.bg.current, state.bg.target, CONSTANTS.MIX_SPEED);
         }
 
         // Draw Background
-        paintCtx.fillStyle = `rgb(${Math.round(currentBackgroundColor.r)}, ${Math.round(currentBackgroundColor.g)}, ${Math.round(currentBackgroundColor.b)})`;
+        const [r, g, b] = state.bg.current.map(c => Math.round(c));
+        paintCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         paintCtx.fillRect(0, 0, width, height);
 
-        // --- Central Shape Interpolation ---
-        // Smoothly transition current shape state towards target centralShape
-        const shapeLerpSpeed = 0.05;
+        // C. Central Shape Animation
+        state.shape.currentSides += (state.shape.targetSides - state.shape.currentSides) * 0.05;
+        // Simple RGB lerp for shape is fine
+        state.shape.currentColor[0] += (state.shape.targetColor[0] - state.shape.currentColor[0]) * 0.05;
+        state.shape.currentColor[1] += (state.shape.targetColor[1] - state.shape.currentColor[1]) * 0.05;
+        state.shape.currentColor[2] += (state.shape.targetColor[2] - state.shape.currentColor[2]) * 0.05;
 
-        // Clear text canvas only (so particles and shape redraw)
-        textCtx.clearRect(0, 0, width, height);
+        state.shape.rotation += 0.005;
 
-        currentCentralShape.sides += (centralShape.sides - currentCentralShape.sides) * shapeLerpSpeed;
+        drawShape(
+            textCtx,
+            width / 2,
+            height / 2,
+            Math.min(width, height) * 0.25,
+            state.shape.currentSides,
+            state.shape.currentColor,
+            state.shape.rotation
+        );
 
-        // Shape color interpolation (using mixbox here too for consistency? Or standard lerp?)
-        currentCentralShape.color.r += (centralShape.color.r - currentCentralShape.color.r) * shapeLerpSpeed;
-        currentCentralShape.color.g += (centralShape.color.g - currentCentralShape.color.g) * shapeLerpSpeed;
-        currentCentralShape.color.b += (centralShape.color.b - currentCentralShape.color.b) * shapeLerpSpeed;
-
-        // Draw Central Shape
-        const cx = width / 2;
-        const cy = height / 2;
-        const size = Math.min(width, height) * 0.25; // Large size
-
-        centralShape.rotation += 0.005; // Slow rotation
-
-        // Calculate darker stroke color for contrast
-        const darkStroke = darkenColor(currentCentralShape.color, 50);
-
-        // Set style
-        textCtx.fillStyle = `rgba(${Math.round(currentCentralShape.color.r)}, ${Math.round(currentCentralShape.color.g)}, ${Math.round(currentCentralShape.color.b)}, 0.1)`;
-        textCtx.strokeStyle = `rgba(${Math.round(darkStroke.r)}, ${Math.round(darkStroke.g)}, ${Math.round(darkStroke.b)}, 1.0)`;
-        textCtx.lineWidth = 4;
-
-        drawProceduralShape(textCtx, cx, cy, size, currentCentralShape.sides, centralShape.rotation);
-
-        // Update and draw particles
-        for (let i = 0; i < particles.length; i++) {
-            particles[i].update();
-            particles[i].draw();
-        }
+        // D. Particles (Physics)
+        updateAndDrawParticles();
 
         requestAnimationFrame(animate);
     }
 
-    // Start animation loop
-    animate();
+    function updateAndDrawParticles() {
+        textCtx.font = CONSTANTS.FONT;
+        textCtx.textBaseline = 'top';
+
+        for (let i = 0; i < state.particles.length; i++) {
+            const p = state.particles[i];
+
+            // Physics
+            p.x += p.vx;
+            p.y += p.vy;
+
+            // Bounce
+            if (p.x < 0 || p.x > width - 100) p.vx *= -1; // rough bounds
+            if (p.y < 0 || p.y > height - 30) p.vy *= -1;
+
+            // Draw
+            textCtx.fillStyle = `rgb(${p.color.r}, ${p.color.g}, ${p.color.b})`;
+            textCtx.fillText(p.text, p.x, p.y);
+        }
+    }
+
+    function drawShape(ctx, cx, cy, size, sides, color, rotation) {
+        ctx.beginPath();
+        const step = (Math.PI * 2) / Math.max(2, Math.floor(sides));
+        const rgb = `rgb(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])})`;
+
+        for (let i = 0; i < sides; i++) {
+            const theta = i * step + rotation;
+            const x = cx + Math.cos(theta) * size;
+            const y = cy + Math.sin(theta) * size;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = rgb; // Stroke only for "blueprint" look
+        ctx.fillStyle = rgb.replace('rgb', 'rgba').replace(')', ', 0.1)'); // Faint fill
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    // 6. Interaction Logic (Optimistic UI)
+    const uiToggle = document.getElementById('ui-toggle');
+    const uiToggleIcon = uiToggle.querySelector('.icon');
+    const uiPanel = document.getElementById('ui-panel');
+
+    const paintBtn = document.getElementById('paintBtn');
+    const wordInput = document.getElementById('wordInput');
+    const rSlider = document.getElementById('rSlider');
+    const gSlider = document.getElementById('gSlider');
+    const bSlider = document.getElementById('bSlider');
+    const cSlider = document.getElementById('cSlider');
+
+    // UI Toggle Logic
+    uiToggle.addEventListener('click', () => {
+        uiPanel.classList.toggle('hidden');
+        uiToggleIcon.textContent = uiPanel.classList.contains('hidden') ? 'Contribute' : 'Close';
+    });
+
+    // Attach Event Listeners
+    paintBtn.addEventListener('click', handleSubmit);
+    wordInput.addEventListener('input', () => {
+        // Simple validation
+        if (wordInput.value.length > 0) paintBtn.disabled = false;
+        else paintBtn.disabled = true;
+    });
+
+    wordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleSubmit();
+    });
+
+    async function handleSubmit() {
+        const text = wordInput.value.trim();
+        if (!text) return;
+
+        const r = parseInt(rSlider.value);
+        const g = parseInt(gSlider.value);
+        const b = parseInt(bSlider.value);
+        const complexity = parseInt(cSlider.value) / 100;
+
+        const colorObj = { r, g, b };
+        const colorArr = [r, g, b];
+
+        // --- OPTIMISTIC UPDATE ---
+        console.log('Optimistic Update: Adding particle and mixing color...');
+
+        // 1. Add Particle Immediately
+        state.particles.push({
+            text: text,
+            color: colorObj,
+            x: width / 2,
+            y: height / 2,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4
+        });
+        if (state.particles.length > CONSTANTS.PARTICLE_LIMIT) state.particles.shift();
+
+        // 2. Mix Background Immediately (Visual only, DB will confirm later)
+        // We push the "Target" towards the new color so the lerp starts immediately
+        state.bg.target = mixbox.lerp(state.bg.target, colorArr, 0.3); // Significant jump
+
+        // 3. Reset Input
+        wordInput.value = '';
+        paintBtn.disabled = true;
+
+        // --- BACKEND SYNC ---
+        if (supabase) {
+            const { error } = await supabase.rpc('submit_contribution', {
+                p_word: text,
+                p_color: colorObj,
+                p_complexity: complexity
+            });
+
+            if (error) console.error('Supabase RPC Error:', error);
+            else {
+                console.log('Backend confirmed submission.');
+                // We assume backend state will propagate via Realtime subscription
+            }
+        }
+    }
+
+    // 7. Realtime & Initialization
+    async function init() {
+        animate(); // Start loop
+
+        if (!supabase) return;
+
+        // Fetch Initial State
+        const { data } = await supabase.from('canvas_state').select('*').eq('id', 1).single();
+        if (data && data.background_color) {
+            console.log('Initial State Loaded:', data.background_color);
+            const bg = data.background_color;
+            state.bg.target = [bg.r, bg.g, bg.b];
+            state.bg.current = [bg.r, bg.g, bg.b]; // Snap to start
+
+            if (data.central_shape_color) {
+                const sc = data.central_shape_color;
+                state.shape.targetColor = [sc.r, sc.g, sc.b];
+                state.shape.targetSides = data.central_shape_sides || 4;
+            }
+        }
+
+        // Subscribe to changes
+        supabase.channel('canvas_updates')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contributions' }, payload => {
+                const c = payload.new;
+                console.log('Realtime Particle:', c.word);
+                // Only spawn if it wasn't just added by US (Optimistic).
+                // Simple dedupe: check if the LAST particle added matches this one exactly.
+                // Or just allow duplicates for "energy". Let's allow duplicates for now to ensure visibility.
+                state.particles.push({
+                    text: c.word,
+                    color: c.color,
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4
+                });
+                if (state.particles.length > CONSTANTS.PARTICLE_LIMIT) state.particles.shift();
+            })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'canvas_state' }, payload => {
+                const s = payload.new;
+                console.log('Realtime State:', s.background_color);
+                if (s.background_color) {
+                    state.bg.target = [s.background_color.r, s.background_color.g, s.background_color.b];
+                }
+                if (s.central_shape_color) {
+                    state.shape.targetColor = [s.central_shape_color.r, s.central_shape_color.g, s.central_shape_color.b];
+                    state.shape.targetSides = s.central_shape_sides;
+                }
+            })
+            .subscribe();
+    }
+
+    // Start
+    init();
+
+    // UI Helpers (Preview, Sliders) - kept simple
+    function updateUIPreview() {
+        const r = parseInt(rSlider.value);
+        const g = parseInt(gSlider.value);
+        const b = parseInt(bSlider.value);
+        previewCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        previewCtx.fillRect(0, 0, 240, 60);
+    }
+    [rSlider, gSlider, bSlider].forEach(s => s.addEventListener('input', updateUIPreview));
+    updateUIPreview();
 
 })();
