@@ -129,7 +129,7 @@
                 const newContrib = payload.new;
                 console.log('New contribution received:', newContrib);
 
-                // Spawn new particle
+                // Spawn new particle (Normal flow)
                 spawnParticle(newContrib.word, newContrib.color, newContrib.complexity, false);
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'canvas_state' }, payload => {
@@ -359,6 +359,12 @@
         paintBtn.disabled = true;
         paintBtn.textContent = 'Adding...';
 
+        // --- Optimistic UI Update ---
+        // Spawn the particle immediately for the user
+        spawnParticle(text, currentColor, currentComplexity, false);
+        // Also optimistically nudge the background color (if we wanted to cheat visually)
+        // But mixbox lerp speed increase should handle the visual impact once the state returns.
+
         try {
             // Call Supabase RPC
             const { data, error } = await supabase.rpc('submit_contribution', {
@@ -448,7 +454,8 @@
     // Animation Loop
     function animate() {
         // --- Background Color Interpolation using Mixbox ---
-        const bgLerpSpeed = 0.05;
+        // INCREASED SPEED: from 0.05 to 0.2 to make contributions clearly visible
+        const bgLerpSpeed = 0.2;
 
         // Check if mixbox is loaded
         if (typeof mixbox !== 'undefined' && mixbox.lerp) {
@@ -457,13 +464,6 @@
 
             // Use mixbox.lerp to get the intermediate color
             const mixedRgb = mixbox.lerp(currentRgb, targetRgb, bgLerpSpeed);
-
-            // mixbox.lerp returns [r, g, b] (or with alpha)
-            // Update currentBackgroundColor state
-            // Note: lerp returns the *result* of the mix at time `t`.
-            // Since we want to approach the target smoothly frame-by-frame:
-            // We treat 'current' as the start and 'target' as the end, and we move 5% towards it.
-            // However, simply setting current = mix(current, target, 0.05) works for "easing" logic.
 
             currentBackgroundColor.r = mixedRgb[0];
             currentBackgroundColor.g = mixedRgb[1];
@@ -489,7 +489,6 @@
         currentCentralShape.sides += (centralShape.sides - currentCentralShape.sides) * shapeLerpSpeed;
 
         // Shape color interpolation (using mixbox here too for consistency? Or standard lerp?)
-        // Standard lerp for shape color is fine, but mixbox might look nicer. Let's stick to standard to minimize complexity unless requested.
         currentCentralShape.color.r += (centralShape.color.r - currentCentralShape.color.r) * shapeLerpSpeed;
         currentCentralShape.color.g += (centralShape.color.g - currentCentralShape.color.g) * shapeLerpSpeed;
         currentCentralShape.color.b += (centralShape.color.b - currentCentralShape.color.b) * shapeLerpSpeed;

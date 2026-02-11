@@ -12,7 +12,8 @@ This project allows users to collaboratively (or individually) paint a persisten
 ## Features
 
 *   **Real-time Visualization:** Persistent background color and central shape that smoothly transition to reflect the collective state.
-*   **Pigment Color Mixing:** Integrated `mixbox.js` for high-quality subtractive/additive color blending.
+*   **Pigment Color Mixing:** Integrated `mixbox.js` for high-quality subtractive/additive color blending with enhanced impact (20% mix strength per contribution).
+*   **Optimistic UI:** Instant feedback for text submissions.
 *   **Particle System:** Bouncing text particles with physics (velocity, friction, collision).
 *   **Responsive:** Works on desktop and mobile. Canvas resizes dynamically while preserving the artwork.
 *   **Minimalist UI:** Collapsible control panel with a clean, adult aesthetic.
@@ -46,7 +47,7 @@ This is a static site. You can deploy it for free using **GitHub Pages**:
 ## Customization
 
 *   **Particle Count:** Adjust `MAX_PARTICLES` in `app.js` (default 250).
-*   **Mixing Speed:** Adjust `bgLerpSpeed` in `app.js` (default 0.05).
+*   **Mixing Speed:** Adjust `bgLerpSpeed` in `app.js` (default 0.2) to change how much each contribution affects the canvas.
 *   **Font:** Change the `font-family` in `styles.css` and `app.js`.
 
 ## License
