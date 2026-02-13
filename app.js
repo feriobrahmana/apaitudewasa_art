@@ -1,4 +1,3 @@
-
 (function() {
     'use strict';
 
@@ -217,10 +216,39 @@
                 p_complexity: complexity
             });
 
-            if (error) console.error('Supabase RPC Error:', error);
-            else {
-                console.log('Backend confirmed submission.');
-                // We assume backend state will propagate via Realtime subscription
+            if (error) {
+                console.error('Supabase RPC Error:', error);
+                // Even on error, we keep the local optimistic state so the user doesn't feel "broken"
+            } else {
+                console.log('Backend confirmed submission. Fetching latest authoritative state...');
+                // 4. Force Fetch & SNAP
+                // Instead of waiting for Realtime (which might lag), we explicitly fetch.
+                fetchLatestState();
+            }
+        }
+    }
+
+    async function fetchLatestState() {
+        if (!supabase) return;
+        const { data, error } = await supabase.from('canvas_state').select('*').eq('id', 1).single();
+
+        if (data && data.background_color) {
+            const bg = data.background_color;
+            const newTarget = [bg.r, bg.g, bg.b];
+
+            // "Snap" effect: To ensure the user sees the server state is accepted,
+            // we set the target. We can also force 'current' to be closer to 'target'
+            // if we want to "catch up" instantly.
+            // Let's rely on the animate loop to lerp to this new authoritative target.
+            // If the optimistic guess was close, this will be smooth.
+            // If the DB logic (average) is different from local optimistic (mixbox),
+            // the colors will correct themselves towards the DB truth.
+            state.bg.target = newTarget;
+
+            if (data.central_shape_color) {
+                const sc = data.central_shape_color;
+                state.shape.targetColor = [sc.r, sc.g, sc.b];
+                state.shape.targetSides = data.central_shape_sides || 4;
             }
         }
     }
@@ -232,18 +260,10 @@
         if (!supabase) return;
 
         // Fetch Initial State
-        const { data } = await supabase.from('canvas_state').select('*').eq('id', 1).single();
-        if (data && data.background_color) {
-            console.log('Initial State Loaded:', data.background_color);
-            const bg = data.background_color;
-            state.bg.target = [bg.r, bg.g, bg.b];
-            state.bg.current = [bg.r, bg.g, bg.b]; // Snap to start
-
-            if (data.central_shape_color) {
-                const sc = data.central_shape_color;
-                state.shape.targetColor = [sc.r, sc.g, sc.b];
-                state.shape.targetSides = data.central_shape_sides || 4;
-            }
+        await fetchLatestState();
+        // Snap current to target initially so we don't fade in from white every reload
+        if (state.bg.target) {
+            state.bg.current = [...state.bg.target];
         }
 
         // Subscribe to changes
