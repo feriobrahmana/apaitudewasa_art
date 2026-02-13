@@ -22,19 +22,22 @@
     const textCanvas = document.getElementById('textCanvas');
     const paintCtx = paintCanvas.getContext('2d');
     const textCtx = textCanvas.getContext('2d');
+    const canvasContainer = document.getElementById('canvas-container');
 
-    let width = window.innerWidth;
-    let height = window.innerHeight;
+    let width, height;
 
     function resize() {
-        width = window.innerWidth;
-        height = window.innerHeight;
+        // Use container dimensions, not window, because we now have a "frame"
+        width = canvasContainer.clientWidth;
+        height = canvasContainer.clientHeight;
+
         paintCanvas.width = width;
         paintCanvas.height = height;
         textCanvas.width = width;
         textCanvas.height = height;
     }
     window.addEventListener('resize', resize);
+    // Initial resize needs a tiny delay to wait for CSS layout if needed, or call immediately
     resize();
 
     // 4. State Management
